@@ -23,6 +23,10 @@ ansiColor('xterm') {
         }
       }
 
+      def githubNotifier = load('h2o-3/scripts/jenkins/groovy/githubNotifier.groovy')
+      githubNotifier()
+      error "Testing"
+
       def prepareH2O3 = load('h2o-3/scripts/jenkins/groovy/prepareH2O3.groovy')
       buildConfig = prepareH2O3('MODE_PR_TESTING', DEFAULT_NODE_LABEL)
 
