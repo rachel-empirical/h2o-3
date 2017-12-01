@@ -7,6 +7,7 @@ import hex.glm.GLM;
 import hex.glm.GLMModel;
 import hex.quantile.Quantile;
 import hex.quantile.QuantileModel;
+import hex.tree.gbm.GBMModel;
 import hex.util.LinearAlgebraUtils;
 import jsr166y.CountedCompleter;
 import org.joda.time.format.DateTimeFormat;
@@ -104,6 +105,7 @@ public abstract class SharedTree<M extends SharedTreeModel<M,P,O>, P extends Sha
    *  Validate the requested ntrees; precompute actual ntrees.  Validate
    *  the number of classes to predict on; validate a checkpoint.  */
   @Override public void init(boolean expensive) {
+
     super.init(expensive);
     if (H2O.ARGS.client && _parms._build_tree_one_node)
       error("_build_tree_one_node", "Cannot run on a single node in client mode.");
@@ -190,6 +192,7 @@ public abstract class SharedTree<M extends SharedTreeModel<M,P,O>, P extends Sha
       if (cf == null)
         error("_calibrate_model", "Calibration frame was not specified.");
     }
+
   }
 
   // --------------------------------------------------------------------------
@@ -350,6 +353,19 @@ public abstract class SharedTree<M extends SharedTreeModel<M,P,O>, P extends Sha
         initializeModelSpecifics();
         resumeFromCheckpoint(SharedTree.this);
         scoreAndBuildTrees(doOOBScoring());
+        if ((_model != null) && (_model instanceof GBMModel) && (_model._output != null) &&
+                (_model._output._training_metrics != null)
+                && (_model._output._training_metrics.auc_obj() != null)) {
+          if (_model._output._training_metrics.auc_obj()._reproducibilityError) {
+            Log.warn("GBM warning: "+" There could be reproducibility error across different H2O clusters " +
+                    "runs due to ROC Histogram bin merging.");
+            Log.warn("GBM warning: ", "To mitigate this problem, run H2O with more memory, reduce " +
+                    "number of trees used and/or reduce tree depth.");
+            _job.warn("GBM warning: There could be reproducibility error across different H2O " +
+                    "clusters runs due to ROC Histogram bin merging.  To mitigate this problem, run H2O with more " +
+                    "memory, reduce number of trees used and/or reduce tree depth.");
+          }
+        }
 
       } finally {
         if( _model!=null ) _model.unlock(_job);

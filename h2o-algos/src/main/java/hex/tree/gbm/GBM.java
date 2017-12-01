@@ -1,8 +1,9 @@
 package hex.tree.gbm;
 
-import hex.genmodel.utils.DistributionFamily;
+import hex.AUC2;
 import hex.Distribution;
 import hex.ModelCategory;
+import hex.genmodel.utils.DistributionFamily;
 import hex.quantile.Quantile;
 import hex.quantile.QuantileModel;
 import hex.tree.*;
@@ -12,16 +13,22 @@ import hex.tree.DTree.UndecidedNode;
 import water.*;
 import water.exceptions.H2OModelBuilderIllegalArgumentException;
 import water.fvec.*;
-import water.util.*;
+import water.util.ArrayUtils;
+import water.util.Log;
+import water.util.MathUtils;
+import water.util.RandomUtils;
 
 import java.util.Arrays;
 import java.util.Random;
+
+import static java.lang.Math.round;
 
 /** Gradient Boosted Trees
  *
  *  Based on "Elements of Statistical Learning, Second Edition, page 387"
  */
 public class GBM extends SharedTree<GBMModel,GBMModel.GBMParameters,GBMModel.GBMOutput> {
+
   @Override public ModelCategory[] can_build() {
     return new ModelCategory[]{
       ModelCategory.Regression,
@@ -34,6 +41,35 @@ public class GBM extends SharedTree<GBMModel,GBMModel.GBMParameters,GBMModel.GBM
   public GBM( GBMModel.GBMParameters parms                   ) { super(parms     ); init(false); }
   public GBM( GBMModel.GBMParameters parms, Key<GBMModel> key) { super(parms, key); init(false); }
   public GBM(boolean startup_once) { super(new GBMModel.GBMParameters(),startup_once); }
+
+  // current AUC2.NBINS = 400 only.  During mergeOneBin operation, depending on the chunking situation, we
+  // can get different final results.  Hence, I am proposing to use a larger bin size during the data
+  // collection process to avoid bin merging.  This is done by using the largest bin size necessary which
+  // is 2*trainining frame row count.  However, when this takes up too much memory, we will try to shrink
+  // the working bin size in order to fit the memory.  When this happens, perfect reproducibility across
+  // different network sizes may not be possible.  To avoid this, call GBM with fewer trees and/or shallower
+  // trees.  Good luck.
+  public int setAUCWorkingBinSize() {
+    if (_train.numRows() <= AUC2.NBINS)
+      return AUC2.NBINS; // no need to change AUC bin size in this case
+
+    int nBinsAUC2;
+    HeartBeat hb= H2O.SELF._heartbeat;
+    long max_mem = H2O.SELF._heartbeat.get_free_mem();
+    if (_train.numRows()*2 > Integer.MAX_VALUE)
+      nBinsAUC2 = Integer.MAX_VALUE/2-1;   // maximum bin size needed.
+    else
+      nBinsAUC2 = (int) _train.numRows();
+
+    int overEstimate = 4; // overEstimate true memory need by 4 times
+    long mem_per_bin = 2*4*hb._cpus_allowed*8*overEstimate;
+    long tot_mem_estimate = nBinsAUC2*mem_per_bin; // 4 arrays _ths, _fps, _tps, _sqe
+
+    if (tot_mem_estimate > max_mem)
+      nBinsAUC2 = round(max_mem/mem_per_bin);
+
+    return nBinsAUC2;
+  }
 
   @Override protected int nModelsInParallel() {
     if (!_parms._parallelize_cross_validation || _parms._max_runtime_secs != 0) return 1; //user demands serial building (or we need to honor the time constraints for all CV models equally)
@@ -97,6 +133,7 @@ public class GBM extends SharedTree<GBMModel,GBMModel.GBMParameters,GBMModel.GBM
     case bernoulli:
       if( _nclass != 2 /*&& !couldBeBool(_response)*/)
         error("_distribution", H2O.technote(2, "Binomial requires the response to be a 2-class categorical"));
+      // need to check to make sure we have enough memory to accommodate AUC2 actions
       break;
     case modified_huber:
       if( _nclass != 2 /*&& !couldBeBool(_response)*/)
