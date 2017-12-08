@@ -2982,12 +2982,25 @@ def extract_scoring_history_field(aModel, fieldOfInterest, takeFirst=False):
     :param fieldOfInterest: string representing a field of interest.
     :return: List of field values or None if it cannot be found
     """
+    extract_from_twoDimTable(aModel._model_json["output"]["scoring_history"], fieldOfInterest, takeFirst)
+    # allFields = aModel._model_json["output"]["scoring_history"]._col_header
+    # if fieldOfInterest in allFields:
+    #     cellValues = []
+    #     fieldIndex = allFields.index(fieldOfInterest)
+    #     for eachCell in aModel._model_json["output"]["scoring_history"].cell_values:
+    #         cellValues.append(eachCell[fieldIndex])
+    #         if takeFirst:   # only grab the result from the first iteration.
+    #             break
+    #     return cellValues
+    # else:
+    #     return None
 
-    allFields = aModel._model_json["output"]["scoring_history"]._col_header
+def extract_from_twoDimTable(twoDTable, fieldOfInterest, takeFirst=False):
+    allFields = twoDTable._col_header
     if fieldOfInterest in allFields:
         cellValues = []
         fieldIndex = allFields.index(fieldOfInterest)
-        for eachCell in aModel._model_json["output"]["scoring_history"].cell_values:
+        for eachCell in twoDTable.cell_values:
             cellValues.append(eachCell[fieldIndex])
             if takeFirst:   # only grab the result from the first iteration.
                 break
