@@ -4,6 +4,7 @@ import h2o
 from tests import pyunit_utils
 from h2o.estimators.gbm import H2OGradientBoostingEstimator
 import numpy as np
+import time
 
 # HEXDEV-700: GBM reproducibility issue.
 def gbm_reproducibility():
@@ -27,9 +28,12 @@ def gbm_reproducibility():
     h2oframe_csv = h2o.import_file(url_csv)
 
     # build gbm model
+    t0 = time.time()
     gbm = H2OGradientBoostingEstimator(distribution='bernoulli', ntrees=50, seed= 987654321, max_depth = 4,
                                        min_rows = 7, score_tree_internal=50)
     gbm.train(x=list(range(2,365)), y="response", training_frame=h2oframe_csv)
+    t1 = time.time()-t0
+    print("Run time is {0}".format(t1))
     auc_h2o = pyunit_utils.extract_from_twoDimTable(gbm._model_json['output']['training_metrics']._metric_json['thresholds_and_metric_scores'], 'threshold', takeFirst=False)
     pyunit_utils.equal_two_arrays(auc_n13, auc_h2o, 1e-10, True)  # compare two thresholds and they should equal
   else:
