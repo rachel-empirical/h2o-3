@@ -142,7 +142,7 @@ public class AUC2 extends Iced {
 
   public AUC2( AUCBuilder bldr ) {
     // Copy result arrays into base object, shrinking to match actual bins
-    bldr.removeDupsShrink(NBINS, false); // make sure arrays are at correct size
+    bldr.removeDupsShrinkSp(NBINS, false); // make sure arrays are at correct size
 
     _nBins = bldr._n;
     assert _nBins >= 1 : "Must have >= 1 bins for AUC calculation, but got " + _nBins;
@@ -325,10 +325,10 @@ public class AUC2 extends Iced {
       }
 
       // Merge duplicate rows in _ths.  May require many merges.  May or may  not cause reproducibility issue
-      removeDupsShrink(_workingNBins, false);
+      removeDupsShrinkSp(_workingNBins, false);
     }
 
-    // Merge duplicate rows in all 4 arrays.
+/*    // Merge duplicate rows in all 4 arrays.
     public void removeDupsShrink(int maxBinSize, boolean setrError) {
       // Merge duplicate rows in _ths.  May require many merges.
       int startIndex = 0;
@@ -341,7 +341,7 @@ public class AUC2 extends Iced {
       while (_n > maxBinSize) {
         mergeOneBin();
       }
-    }
+    }*/
 
     // Merge duplicate rows in all 4 arrays.
     public void removeDupsShrinkSp(int maxBinSize, boolean setrError) {
@@ -357,7 +357,7 @@ public class AUC2 extends Iced {
       }
     }
 
-    // Can speed this one up
+/*    // Can speed this one up
     public void reduce2(AUCBuilder bldr) {
       // Merge sort the 2 sorted lists into the double-sized arrays.  The tail
       // half of the double-sized array is unused, but the front half is
@@ -385,7 +385,7 @@ public class AUC2 extends Iced {
 
       // Merge duplicate rows in _ths.  May require many merges.  May or may  not cause reproducibility issue
       removeDupsShrink(_workingNBins, true);
-    }
+    }*/
 
     // Can speed this one up
     public void reduce(AUCBuilder bldr) {
@@ -417,12 +417,29 @@ public class AUC2 extends Iced {
       removeDupsShrinkSp(_workingNBins, true);
     }
 
+    // update all the arrays based on which two bins to merge
+    public void updateArrays(int ssx) {
+      double k0 = k(ssx);
+      double k1 = k(ssx + 1);
+      _ths[ssx]=(_ths[ssx]*k0 +_ths[ssx+1]*k1)/(k0+k1);
+      _sqe[ssx]=_sqe[ssx]+_sqe[ssx+1]+ compute_delta_error(_ths[ssx+1], k1, _ths[ssx], k0);
+
+      _tps[ssx]+=_tps[ssx+1];
+      _fps[ssx]+=_fps[ssx+1];
+      // Slide over to crush the removed bin at index (ssx+1)
+      System.arraycopy(_ths,ssx+2,_ths,ssx+1,_n-ssx-2);
+      System.arraycopy(_sqe,ssx+2,_sqe,ssx+1,_n-ssx-2);
+      System.arraycopy(_tps,ssx+2,_tps,ssx+1,_n-ssx-2);
+      System.arraycopy(_fps,ssx+2,_fps,ssx+1,_n-ssx-2);
+      _n--;
+    }
+
     private int mergeDupBin() {
       // Too many bins; must merge bins.  Merge into bins with least total
       // squared error.  Horrible slowness linear arraycopy.
       int ssx = _ssx; // Dups() will set _ssx
-
-      // Merge two bins.  Classic bins merging by averaging the histogram
+      updateArrays(ssx);
+/*      // Merge two bins.  Classic bins merging by averaging the histogram
       // centers based on counts.
       double k0 = k(ssx);
       double k1 = k(ssx + 1);
@@ -435,12 +452,12 @@ public class AUC2 extends Iced {
       System.arraycopy(_sqe, ssx + 2, _sqe, ssx + 1, _n - ssx - 2);
       System.arraycopy(_tps, ssx + 2, _tps, ssx + 1, _n - ssx - 2);
       System.arraycopy(_fps, ssx + 2, _fps, ssx + 1, _n - ssx - 2);
-      _n--;
+      _n--;*/
       _ssx = -1;   // reset so that the next mergeOneBin() can start over
       return ssx;
     }
 
-    private int mergeOneBin() {
+/*    private int mergeOneBin() {
       // Too many bins; must merge bins.  Merge into bins with least total
       // squared error.  Horrible slowness linear arraycopy.
       int ssx = (_ssx > 0) ? _ssx : find_smallest(); // Dups() will set _ssx
@@ -461,7 +478,7 @@ public class AUC2 extends Iced {
       _n--;
       _ssx = -1;   // reset so that the next mergeOneBin() can start over
       return ssx;
-    }
+    }*/
 
     // Find the pair of bins that when combined give the smallest increase in
     // squared error.  Dups never increase squared error.
@@ -492,6 +509,9 @@ public class AUC2 extends Iced {
       return minI;
     }
 
+    /*
+    Find duplicates in the array _ths.  If foound will return true else return false
+     */
     private boolean dups(int init_index) {
       int n = _n;
       for (int i = init_index; i < n - 1; i++) {
@@ -503,7 +523,6 @@ public class AUC2 extends Iced {
       }
       return false;
     }
-
 
     private double compute_delta_error(double ths1, double n1, double ths0, double n0) {
       // If thresholds vary by less than a float ULP, treat them as the same.
@@ -520,33 +539,6 @@ public class AUC2 extends Iced {
       return _tps[idx] + _fps[idx];
     }
 
-    //private boolean sorted() {
-    //  double t = _ths[0];
-    //  for( int i=1; i<_n; i++ ) {
-    //    if( _ths[i] < t )
-    //      return false;
-    //    t = _ths[i];
-    //  }
-    //  return true;
-    //}
-
-  // update all the arrays based on which two bins to merge
-  public void updateArrays(int ssx) {
-    double k0 = k(ssx);
-    double k1 = k(ssx + 1);
-    _ths[ssx]=(_ths[ssx]*k0 +_ths[ssx+1]*k1)/(k0+k1);
-    _sqe[ssx]=_sqe[ssx]+_sqe[ssx+1]+ compute_delta_error(_ths[ssx+1], k1, _ths[ssx], k0);
-
-    _tps[ssx]+=_tps[ssx+1];
-    _fps[ssx]+=_fps[ssx+1];
-    // Slide over to crush the removed bin at index (ssx+1)
-      System.arraycopy(_ths,ssx+2,_ths,ssx+1,_n-ssx-2);
-      System.arraycopy(_sqe,ssx+2,_sqe,ssx+1,_n-ssx-2);
-      System.arraycopy(_tps,ssx+2,_tps,ssx+1,_n-ssx-2);
-      System.arraycopy(_fps,ssx+2,_fps,ssx+1,_n-ssx-2);
-    _n--;
-  }
-
 
     // speed up version of mergeOneBin.  This method will merge all _n bins down to nWorkingBins.
     private void mergeHistBins( int nWorkingBins ) {
@@ -555,21 +547,10 @@ public class AUC2 extends Iced {
       if (numberOfMerge < 0)  // nothing to merge
         return;
 
-      int n = _n-1;
       int queueS = 2*numberOfMerge; // use a heap twice the size of number of bins to merge
       RowValue[] sortArray = new RowValue[queueS];  // store sorted arrays from a heap
       PriorityQueue sortSQ = new PriorityQueue<RowValue<Double>>(); // Priority queue
-
-      buildSeqHeap(sortSQ, queueS);
-/*      for (int i = 0; i < n; i++) { // build PQ with queueS smallest rows
-        double derr = compute_delta_error(_ths[i + 1], k(i + 1), _ths[i], k(i));
-        double seq = _sqe[i] + _sqe[i + 1] + derr;
-        RowValue currPair = new RowValue(i, seq, -1);
-        sortSQ.offer(currPair);   // add pair to PriorityQueue
-        if (sortSQ.size() > queueS) {
-          sortSQ.poll();      // remove head if exceeds queue size
-        }
-      }*/
+      buildSeqHeap(sortSQ, queueS); // build PQ that contains the queueS lowerest Seq
 
       // copy the heap into array sortArray
       int counter = 0;
@@ -578,7 +559,7 @@ public class AUC2 extends Iced {
         sortArray[counter++] = new RowValue(currPair._rowIndex, currPair._value, 1);
       }
 
-      // rebuild PQ with elements in sortArray so that the min is on top
+      // rebuild PQ with elements in sortArray so that the min seq is on top
       for (int index=0; index < counter; index++)
         sortSQ.offer(new RowValue(sortArray[index]._rowIndex, sortArray[index]._value, 1));
 
@@ -596,6 +577,10 @@ public class AUC2 extends Iced {
       }
     }
 
+    /*
+    Build a PriorityQueue with value sorted on seq.  This heap will store the queueS smallest
+    seq values.
+     */
     public void buildSeqHeap(PriorityQueue sortedP, int maxSize) {
       int n = _n-1;
       for (int i = 0; i < n; i++) { // build PQ with queueS smallest rows
